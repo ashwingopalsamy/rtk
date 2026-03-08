@@ -33,9 +33,9 @@
 
 ---
 
-rtk filtra y comprime las salidas de comandos antes de que lleguen al contexto de tu LLM. Binario Rust unico, cero dependencias, <10ms de overhead.
+rtk filtra y comprime las salidas de comandos antes de que lleguen al contexto de tu LLM. Compatible con cualquier agente de codigo IA — solo prefija los comandos con `rtk`. Binario unico, cero dependencias, <10ms de overhead.
 
-## Ahorro de tokens (sesion de 30 min en Claude Code)
+## Ahorro de tokens (sesion de desarrollo de 30 min)
 
 | Operacion | Frecuencia | Estandar | rtk | Ahorro |
 |-----------|------------|----------|-----|--------|
@@ -75,20 +75,28 @@ rtk gain        # Debe mostrar estadisticas de ahorro
 
 ## Inicio rapido
 
+**Uso directo con cualquier agente:**
 ```bash
-# 1. Instalar hook para Claude Code (recomendado)
-rtk init --global
-
-# 2. Reiniciar Claude Code, luego probar
-git status  # Automaticamente reescrito a rtk git status
+rtk git status              # Estado compacto
+rtk cargo test              # Solo fallos (-90%)
+rtk grep "pattern" .        # Resultados agrupados
 ```
+
+**O reescritura automatica con Claude Code:**
+```bash
+rtk init --global           # Instalar hook
+# Reiniciar Claude Code — los comandos se reescriben automaticamente
+git status                  # → rtk git status (transparente)
+```
+
+RTK es un binario autonomo. El hook de Claude Code reescribe los comandos automaticamente, pero cualquier agente funciona prefijando `rtk`.
 
 ## Como funciona
 
 ```
   Sin rtk:                                         Con rtk:
 
-  Claude  --git status-->  shell  -->  git          Claude  --git status-->  RTK  -->  git
+  Agent  --git status-->  shell  -->  git           Agent  --git status-->  RTK  -->  git
     ^                                   |             ^                      |          |
     |        ~2,000 tokens (crudo)      |             |   ~200 tokens        | filtro   |
     +-----------------------------------+             +------- (filtrado) ---+----------+
