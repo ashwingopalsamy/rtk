@@ -13,13 +13,13 @@ const CHANGELOG_PATH = path.resolve(process.cwd(), "CHANGELOG.md");
 const TYPE_ORDER = ["feat", "fix", "perf", "refactor", "security", "docs", "chore"] as const;
 
 const TYPE_LABELS: Record<string, string> = {
-  feat: "✨ Nouvelles Fonctionnalités",
-  fix: "🔧 Corrections de Bugs",
-  perf: "⚡ Performances",
+  feat: "✨ Features",
+  fix: "🔧 Bug Fixes",
+  perf: "⚡ Performance",
   refactor: "🔄 Refactoring",
-  security: "🔒 Sécurité",
+  security: "🔒 Security",
   docs: "📚 Documentation",
-  chore: "🛠️ Technique",
+  chore: "🛠️ Chores",
 };
 
 export interface Fragment {
@@ -86,7 +86,7 @@ export function buildSection(version: string, date: string, fragments: Array<{ f
 
   // Scripts section
   if (withScripts.length > 0) {
-    lines.push("### 🔧 Scripts Post-Deploy", "");
+    lines.push("### 🔧 Post-Deploy Scripts", "");
     withScripts.forEach(({ fragment }) => {
       lines.push(`**PR #${fragment.pr} — ${fragment.title}:**`);
       fragment.scripts!.forEach((s) => lines.push("```bash", s, "```"));

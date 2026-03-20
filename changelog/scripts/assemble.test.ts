@@ -31,16 +31,16 @@ describe("buildSection", () => {
     assert.ok(!result.includes("###"), "Should have no type sections for empty input");
   });
 
-  it("single feat fragment appears under Nouvelles Fonctionnalités", () => {
+  it("single feat fragment appears under Features", () => {
     const result = buildSection("1.0.0", "2026-01-01", [entry(BASE_FEAT)]);
-    assert.ok(result.includes("✨ Nouvelles Fonctionnalités"), "Should include feat section label");
+    assert.ok(result.includes("✨ Features"), "Should include feat section label");
     assert.ok(result.includes("Add hook filtering support"), "Should include fragment title");
     assert.ok(result.includes("(#1)"), "Should include PR number");
   });
 
-  it("single fix fragment appears under Corrections de Bugs", () => {
+  it("single fix fragment appears under Bug Fixes", () => {
     const result = buildSection("1.0.0", "2026-01-01", [entry(BASE_FIX)]);
-    assert.ok(result.includes("🔧 Corrections de Bugs"), "Should include fix section label");
+    assert.ok(result.includes("🔧 Bug Fixes"), "Should include fix section label");
     assert.ok(result.includes("Fix log filter"), "Should include fragment title");
     assert.ok(result.includes("(#2)"), "Should include PR number");
   });
@@ -58,13 +58,13 @@ describe("buildSection", () => {
     assert.ok(result.includes("⚠️ Migration DB."), "Should include migration warning marker");
   });
 
-  it("scripts non-empty causes fragment to appear under Scripts Post-Deploy", () => {
+  it("scripts non-empty causes fragment to appear under Post-Deploy Scripts", () => {
     const fragment: Fragment = {
       ...BASE_FIX,
       scripts: ["psql -d mydb -c 'ALTER TABLE ...'"],
     };
     const result = buildSection("1.1.0", "2026-01-15", [entry(fragment)]);
-    assert.ok(result.includes("🔧 Scripts Post-Deploy"), "Should include scripts section");
+    assert.ok(result.includes("🔧 Post-Deploy Scripts"), "Should include scripts section");
     assert.ok(result.includes("psql -d mydb"), "Should include the script content");
   });
 
@@ -73,9 +73,9 @@ describe("buildSection", () => {
     const entries = [entry(BASE_FIX), entry(secFragment), entry(BASE_FEAT)];
     const result = buildSection("1.2.0", "2026-03-01", entries);
 
-    const featIdx = result.indexOf("✨ Nouvelles Fonctionnalités");
-    const fixIdx = result.indexOf("🔧 Corrections de Bugs");
-    const secIdx = result.indexOf("🔒 Sécurité");
+    const featIdx = result.indexOf("✨ Features");
+    const fixIdx = result.indexOf("🔧 Bug Fixes");
+    const secIdx = result.indexOf("🔒 Security");
 
     assert.ok(featIdx !== -1, "feat section should be present");
     assert.ok(fixIdx !== -1, "fix section should be present");
@@ -89,7 +89,7 @@ describe("buildSection", () => {
     const result = buildSection("1.0.1", "2026-01-20", [entry(BASE_FIX), entry(fix2)]);
 
     assert.equal(
-      (result.match(/🔧 Corrections de Bugs/g) ?? []).length,
+      (result.match(/🔧 Bug Fixes/g) ?? []).length,
       1,
       "Should have exactly one fix section heading"
     );
