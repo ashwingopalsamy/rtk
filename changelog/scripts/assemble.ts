@@ -22,7 +22,7 @@ const TYPE_LABELS: Record<string, string> = {
   chore: "🛠️ Technique",
 };
 
-interface Fragment {
+export interface Fragment {
   pr: number;
   type: string;
   scope: string;
@@ -58,7 +58,7 @@ function formatLine(fragment: Fragment): string {
   return line;
 }
 
-function buildSection(version: string, date: string, fragments: Array<{ fragment: Fragment; file: string }>): string {
+export function buildSection(version: string, date: string, fragments: Array<{ fragment: Fragment; file: string }>): string {
   const breaking = fragments.filter((f) => f.fragment.breaking);
   const withScripts = fragments.filter(
     (f) => f.fragment.scripts && f.fragment.scripts.length > 0
@@ -111,91 +111,93 @@ function parseArgs() {
   };
 }
 
-const { version, date, dryRun } = parseArgs();
+if (require.main === module) {
+  const { version, date, dryRun } = parseArgs();
 
-if (!version) {
-  console.error("Usage: pnpm changelog:assemble --version <x.y.z> [--date YYYY-MM-DD] [--dry-run]");
-  process.exit(1);
-}
+  if (!version) {
+    console.error("Usage: pnpm changelog:assemble --version <x.y.z> [--date YYYY-MM-DD] [--dry-run]");
+    process.exit(1);
+  }
 
-const entries = loadFragments();
-if (entries.length === 0) {
-  console.log("No fragments found in changelog/fragments/ — nothing to assemble.");
-  process.exit(0);
-}
+  const entries = loadFragments();
+  if (entries.length === 0) {
+    console.log("No fragments found in changelog/fragments/ — nothing to assemble.");
+    process.exit(0);
+  }
 
-console.log(`Assembling ${entries.length} fragment(s) into version ${version}...`);
+  console.log(`Assembling ${entries.length} fragment(s) into version ${version}...`);
 
-const section = buildSection(version, date, entries);
+  const section = buildSection(version, date, entries);
 
-if (dryRun) {
-  console.log("\n--- DRY RUN OUTPUT ---\n");
-  console.log(section);
-  console.log("--- END DRY RUN ---\n");
-  console.log("No files modified (--dry-run).");
-  process.exit(0);
-}
+  if (dryRun) {
+    console.log("\n--- DRY RUN OUTPUT ---\n");
+    console.log(section);
+    console.log("--- END DRY RUN ---\n");
+    console.log("No files modified (--dry-run).");
+    process.exit(0);
+  }
 
-// Update CHANGELOG.md
-const NEXT_RELEASE_MARKER = "## [Next Release]";
-const NEXT_RELEASE_PLACEHOLDER = [
-  "## [Next Release]",
-  "",
-  "<!-- Fragments in changelog/fragments/ will be assembled here at release time -->",
-  "",
-  "---",
-  "",
-].join("\n");
+  // Update CHANGELOG.md
+  const NEXT_RELEASE_MARKER = "## [Next Release]";
+  const NEXT_RELEASE_PLACEHOLDER = [
+    "## [Next Release]",
+    "",
+    "<!-- Fragments in changelog/fragments/ will be assembled here at release time -->",
+    "",
+    "---",
+    "",
+  ].join("\n");
 
-let changelog = fs.readFileSync(CHANGELOG_PATH, "utf8");
+  let changelog = fs.readFileSync(CHANGELOG_PATH, "utf8");
 
-if (!changelog.includes(NEXT_RELEASE_MARKER)) {
-  // Inject placeholder at top after title block
-  const firstRelease = changelog.search(/^## \[/m);
-  if (firstRelease !== -1) {
+  if (!changelog.includes(NEXT_RELEASE_MARKER)) {
+    // Inject placeholder at top after title block
+    const firstRelease = changelog.search(/^## \[/m);
+    if (firstRelease !== -1) {
+      changelog =
+        changelog.slice(0, firstRelease) +
+        NEXT_RELEASE_PLACEHOLDER +
+        "\n" +
+        changelog.slice(firstRelease);
+    }
+  }
+
+  // Replace ## [Next Release] section with the new versioned section + a fresh placeholder
+  const markerIdx = changelog.indexOf(NEXT_RELEASE_MARKER);
+  if (markerIdx !== -1) {
+    // Find end of the Next Release section (next ## or EOF)
+    const afterMarker = changelog.indexOf("\n## ", markerIdx + 1);
+    const nextSectionStart = afterMarker !== -1 ? afterMarker + 1 : changelog.length;
     changelog =
-      changelog.slice(0, firstRelease) +
+      changelog.slice(0, markerIdx) +
       NEXT_RELEASE_PLACEHOLDER +
       "\n" +
-      changelog.slice(firstRelease);
+      section +
+      changelog.slice(nextSectionStart);
   }
+
+  fs.writeFileSync(CHANGELOG_PATH, changelog, "utf8");
+  console.log(`✅ CHANGELOG.md updated with version ${version}`);
+
+  // Archive fragments
+  const archiveDir = path.join(FRAGMENTS_DIR, "released", version);
+  fs.mkdirSync(archiveDir, { recursive: true });
+
+  entries.forEach(({ file }) => {
+    const src = path.join(FRAGMENTS_DIR, file);
+    const dst = path.join(archiveDir, file);
+    fs.renameSync(src, dst);
+  });
+
+  // Recreate .gitkeep if fragments/ is now empty
+  const remaining = fs.readdirSync(FRAGMENTS_DIR).filter((f) => f.endsWith(".yml"));
+  if (remaining.length === 0) {
+    fs.writeFileSync(path.join(FRAGMENTS_DIR, ".gitkeep"), "", "utf8");
+  }
+
+  console.log(`✅ ${entries.length} fragment(s) archived to changelog/fragments/released/${version}/`);
+  console.log("\nNext steps:");
+  console.log("  git add CHANGELOG.md changelog/");
+  console.log(`  git commit -s -m "chore(release): assemble changelog for v${version}"`);
+  console.log(`  git tag v${version}`);
 }
-
-// Replace ## [Next Release] section with the new versioned section + a fresh placeholder
-const markerIdx = changelog.indexOf(NEXT_RELEASE_MARKER);
-if (markerIdx !== -1) {
-  // Find end of the Next Release section (next ## or EOF)
-  const afterMarker = changelog.indexOf("\n## ", markerIdx + 1);
-  const nextSectionStart = afterMarker !== -1 ? afterMarker + 1 : changelog.length;
-  changelog =
-    changelog.slice(0, markerIdx) +
-    NEXT_RELEASE_PLACEHOLDER +
-    "\n" +
-    section +
-    changelog.slice(nextSectionStart);
-}
-
-fs.writeFileSync(CHANGELOG_PATH, changelog, "utf8");
-console.log(`✅ CHANGELOG.md updated with version ${version}`);
-
-// Archive fragments
-const archiveDir = path.join(FRAGMENTS_DIR, "released", version);
-fs.mkdirSync(archiveDir, { recursive: true });
-
-entries.forEach(({ file }) => {
-  const src = path.join(FRAGMENTS_DIR, file);
-  const dst = path.join(archiveDir, file);
-  fs.renameSync(src, dst);
-});
-
-// Recreate .gitkeep if fragments/ is now empty
-const remaining = fs.readdirSync(FRAGMENTS_DIR).filter((f) => f.endsWith(".yml"));
-if (remaining.length === 0) {
-  fs.writeFileSync(path.join(FRAGMENTS_DIR, ".gitkeep"), "", "utf8");
-}
-
-console.log(`✅ ${entries.length} fragment(s) archived to changelog/fragments/released/${version}/`);
-console.log("\nNext steps:");
-console.log("  git add CHANGELOG.md changelog/");
-console.log(`  git commit -s -m "chore(release): assemble changelog for v${version}"`);
-console.log(`  git tag v${version}`);

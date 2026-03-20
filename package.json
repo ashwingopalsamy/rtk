@@ -6,7 +6,8 @@
     "changelog:add": "tsx changelog/scripts/add.ts",
     "changelog:validate": "tsx changelog/scripts/validate.ts",
     "changelog:assemble": "tsx changelog/scripts/assemble.ts",
-    "changelog:audit": "tsx changelog/scripts/audit.ts"
+    "changelog:audit": "tsx changelog/scripts/audit.ts",
+    "test:changelog": "tsx --test changelog/scripts/validate.test.ts changelog/scripts/assemble.test.ts"
   },
   "devDependencies": {
     "tsx": "^4.19.2",

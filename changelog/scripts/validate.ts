@@ -8,10 +8,10 @@ import * as fs from "fs";
 import * as path from "path";
 import { parse } from "yaml";
 
-const TYPES = ["feat", "fix", "perf", "refactor", "security", "docs", "chore"];
+export const TYPES = ["feat", "fix", "perf", "refactor", "security", "docs", "chore"];
 const FRAGMENTS_DIR = path.resolve(process.cwd(), "changelog/fragments");
 
-interface Fragment {
+export interface Fragment {
   pr: number;
   type: string;
   scope: string;
@@ -22,7 +22,7 @@ interface Fragment {
   scripts?: string[];
 }
 
-function validateFragment(filepath: string): string[] {
+export function validateFragment(filepath: string): string[] {
   const errors: string[] = [];
 
   let raw: string;
@@ -92,7 +92,7 @@ function validateFragment(filepath: string): string[] {
   return errors;
 }
 
-function checkDuplicates(targetFile: string): string[] {
+export function checkDuplicates(targetFile: string): string[] {
   const warnings: string[] = [];
   const targetBasename = path.basename(targetFile);
   const targetMatch = targetBasename.match(/^(\d+)-/);
@@ -118,23 +118,25 @@ function checkDuplicates(targetFile: string): string[] {
   return warnings;
 }
 
-const filepath = process.argv[2];
-if (!filepath) {
-  console.error("Usage: pnpm changelog:validate <fragment.yml>");
-  process.exit(1);
+if (require.main === module) {
+  const filepath = process.argv[2];
+  if (!filepath) {
+    console.error("Usage: pnpm changelog:validate <fragment.yml>");
+    process.exit(1);
+  }
+
+  const absPath = path.resolve(process.cwd(), filepath);
+  const errors = validateFragment(absPath);
+  const warnings = checkDuplicates(absPath);
+
+  warnings.forEach((w) => console.warn(`⚠️  ${w}`));
+
+  if (errors.length > 0) {
+    console.error(`❌ Validation failed for ${path.basename(filepath)}:`);
+    errors.forEach((e) => console.error(`   - ${e}`));
+    process.exit(1);
+  }
+
+  console.log(`✅ Valid: ${path.basename(filepath)}`);
+  process.exit(0);
 }
-
-const absPath = path.resolve(process.cwd(), filepath);
-const errors = validateFragment(absPath);
-const warnings = checkDuplicates(absPath);
-
-warnings.forEach((w) => console.warn(`⚠️  ${w}`));
-
-if (errors.length > 0) {
-  console.error(`❌ Validation failed for ${path.basename(filepath)}:`);
-  errors.forEach((e) => console.error(`   - ${e}`));
-  process.exit(1);
-}
-
-console.log(`✅ Valid: ${path.basename(filepath)}`);
-process.exit(0);
