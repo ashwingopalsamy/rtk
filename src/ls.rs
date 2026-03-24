@@ -49,6 +49,44 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
         .map(|s| s.as_str())
         .collect();
 
+    // Detect flags incompatible with our -l parser: -1, -d, -F, -C, -m, -x
+    // These change the output format so we can't parse 9-column ls -l output.
+    // Passthrough to raw ls without filtering.
+    let incompatible_flags = flags.iter().any(|f| {
+        let stripped = f.trim_start_matches('-');
+        stripped.contains('1')
+            || stripped.contains('d')
+            || stripped.contains('F')
+            || stripped.contains('C')
+            || stripped.contains('m')
+            || stripped.contains('x')
+            || stripped.contains('i')
+            || stripped.contains('p')
+    });
+
+    if incompatible_flags {
+        let mut raw_cmd = resolved_command("ls");
+        for flag in &flags {
+            raw_cmd.arg(flag);
+        }
+        if paths.is_empty() {
+            raw_cmd.arg(".");
+        } else {
+            for p in &paths {
+                raw_cmd.arg(p);
+            }
+        }
+        let output = raw_cmd.output().context("Failed to run ls")?;
+        let raw = String::from_utf8_lossy(&output.stdout);
+        print!("{}", raw);
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            eprint!("{}", stderr);
+            std::process::exit(output.status.code().unwrap_or(1));
+        }
+        return Ok(());
+    }
+
     // Build ls -la + any extra flags the user passed (e.g. -R)
     // Strip -l, -a, -h (we handle all of these ourselves)
     let mut cmd = resolved_command("ls");
@@ -89,7 +127,15 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
     }
 
     let raw = String::from_utf8_lossy(&output.stdout).to_string();
-    let filtered = compact_ls(&raw, show_all);
+    let ls_target = paths.first().copied().unwrap_or(".");
+    let is_recursive = args.iter().any(|a| {
+        (a.starts_with('-') && !a.starts_with("--") && a.contains('R')) || a == "--recursive"
+    });
+    let filtered = if is_recursive {
+        compact_ls_recursive(&raw, show_all, ls_target)
+    } else {
+        compact_ls(&raw, show_all)
+    };
 
     if verbose > 0 {
         eprintln!(
@@ -110,12 +156,39 @@ pub fn run(args: &[String], verbose: u8) -> Result<()> {
         paths.join(" ")
     };
     print!("{}", filtered);
-    timer.track(
-        &format!("ls -la {}", target_display),
-        "rtk ls",
-        &raw,
-        &filtered,
-    );
+
+    // Track savings against plain `ls` (what the LLM would have run),
+    // not `ls -la` (what RTK internally uses for parsing). Fixes #561.
+    let user_flags: String = args
+        .iter()
+        .filter(|a| a.starts_with('-'))
+        .map(|s| s.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let original_cmd = if user_flags.is_empty() {
+        format!("ls {}", target_display)
+    } else {
+        format!("ls {} {}", user_flags, target_display)
+    };
+
+    // Run plain ls to get the real baseline token count
+    let mut baseline_cmd = resolved_command("ls");
+    for flag in &flags {
+        baseline_cmd.arg(flag);
+    }
+    if paths.is_empty() {
+        baseline_cmd.arg(".");
+    } else {
+        for p in &paths {
+            baseline_cmd.arg(p);
+        }
+    }
+    let baseline = baseline_cmd
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .unwrap_or_else(|_| raw.clone());
+
+    timer.track(&original_cmd, "rtk ls", &baseline, &filtered);
 
     Ok(())
 }
@@ -222,6 +295,90 @@ fn compact_ls(raw: &str, show_all: bool) -> String {
     out.push_str(&summary);
     out.push('\n');
 
+    out
+}
+
+/// Compact recursive ls output with hierarchy preserved via indentation (#714).
+/// Uses the known target path to correctly compute relative paths.
+fn compact_ls_recursive(raw: &str, show_all: bool, target: &str) -> String {
+    let mut out = String::new();
+    let mut total_files = 0usize;
+    let mut total_dirs = 0usize;
+    let root = target.trim_end_matches('/');
+
+    // Collect sections: (path, lines)
+    let mut sections: Vec<(String, Vec<String>)> = Vec::new();
+    let mut current_lines: Vec<String> = Vec::new();
+    let mut current_path = root.to_string();
+
+    for line in raw.lines() {
+        if line.ends_with(':') && !line.starts_with("total ") && !line.contains(' ') {
+            if !current_lines.is_empty() || !sections.is_empty() {
+                sections.push((current_path.clone(), current_lines));
+                current_lines = Vec::new();
+            }
+            current_path = line.trim_end_matches(':').to_string();
+            continue;
+        }
+        current_lines.push(line.to_string());
+    }
+    if !current_lines.is_empty() {
+        sections.push((current_path, current_lines));
+    }
+
+    let root_slash = format!("{}/", root);
+
+    for (path, lines) in &sections {
+        let relative = if path == root || path.trim_end_matches('/') == root {
+            ""
+        } else {
+            path.strip_prefix(&root_slash)
+                .or_else(|| path.strip_prefix(root).map(|s| s.trim_start_matches('/')))
+                .unwrap_or(path)
+        };
+
+        let depth = if relative.is_empty() {
+            0
+        } else {
+            relative.matches('/').count() + 1
+        };
+        let indent = " ".repeat(depth);
+
+        if !relative.is_empty() {
+            let dir_name = relative.rsplit('/').next().unwrap_or(relative);
+            out.push_str(&format!("{}{}:\n", indent, dir_name));
+            total_dirs += 1;
+        }
+
+        for line in lines {
+            if line.starts_with("total ") || line.is_empty() {
+                continue;
+            }
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() < 9 {
+                continue;
+            }
+            let name = parts[8..].join(" ");
+            if name == "." || name == ".." {
+                continue;
+            }
+            if !show_all && NOISE_DIRS.iter().any(|noise| name == *noise) {
+                continue;
+            }
+            if parts[0].starts_with('d') {
+                continue;
+            } else if parts[0].starts_with('-') || parts[0].starts_with('l') {
+                let size: u64 = parts[4].parse().unwrap_or(0);
+                out.push_str(&format!("{} {}  {}\n", indent, name, human_size(size)));
+                total_files += 1;
+            }
+        }
+    }
+
+    if out.is_empty() {
+        return "(empty)\n".to_string();
+    }
+    out.push_str(&format!("\n{} files, {} dirs\n", total_files, total_dirs));
     out
 }
 
