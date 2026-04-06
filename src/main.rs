@@ -1247,6 +1247,15 @@ fn validate_pnpm_filters(filters: &[String], command: &PnpmCommands) -> Option<S
 }
 
 fn main() {
+    // Reset SIGPIPE to default handler so writing to a closed pipe
+    // e.g `rtk git log | head` exits silently instead of panicking.
+    // Rust ignores SIGPIPE by default and with panic="abort" in the
+    // release profile that becomes SIGABRT + coredump.
+    // #[cfg(unix)]
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
     let code = match run_cli() {
         Ok(code) => code,
         Err(e) => {
