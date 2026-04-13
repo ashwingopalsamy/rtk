@@ -1251,7 +1251,7 @@ fn main() {
     // e.g `rtk git log | head` exits silently instead of panicking.
     // Rust ignores SIGPIPE by default and with panic="abort" in the
     // release profile that becomes SIGABRT + coredump.
-    // #[cfg(unix)]
+    #[cfg(unix)]
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
@@ -2751,7 +2751,7 @@ mod tests {
         );
 
         let mut child = std::process::Command::new(&bin_path)
-            .args(["git", "log", "--online", "-50"])
+            .args(["git", "log", "--oneline", "-50"])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
